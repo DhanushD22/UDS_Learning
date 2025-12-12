@@ -6,6 +6,17 @@ bus = can.interface.Bus(channel='vcan0', bustype='socketcan', can_filters=[{"can
 
 memory = {0xF190: b'VIN12345678901234'}
 
+# DTC Memory – Format: DTC (3-byte int) → status byte
+# Example real-world DTCs:
+# P0100 = Mass Air Flow Circuit Malfunction
+# P0301 = Cylinder 1 Misfire Detected
+# P0420 = Catalyst System Efficiency Below Threshold
+dtc_memory = {
+    0x0100: 0x28,   # testFailed + confirmed
+    0x0301: 0x08,   # testFailed this cycle only
+    0x0420: 0x2A,   # testFailed + confirmed + warningIndicatorRequested
+}
+
 def send_response(data):
     # Split long responses into 8-byte chunks (simple ISO-TP like)
     if len(data) <= 8:
@@ -68,3 +79,30 @@ while True:
     elif sid == 0x3E:
         print("[ECU] ← 3E 00 Tester present")
         send_response(bytes([0x7E, 0x00]))
+    
+    elif sid == 0x19:  # ReadDTCInformation
+        subfunc = data[1]
+        print(f"[ECU] ← 19 {subfunc:02X}  Read DTC Information")
+
+        if subfunc == 0x01:  # Report Number of DTC by Status Mask
+            status_mask = data[2] if len(data) >= 3 else 0xFF
+            count = sum(1 for status in dtc_memory.values() if (status & status_mask))
+            # Response: 59 01 [AvailMask] [Format=0x02] [Count 2 bytes]
+            resp = bytes([0x59, 0x01, 0xFF, 0x02]) + count.to_bytes(2, 'big')
+            send_response(resp)
+            print(f"[ECU] → 59 01  DTC count = {count} for mask 0x{status_mask:02X}")
+
+        elif subfunc == 0x02:  # Report DTC by Status Mask
+            status_mask = data[2] if len(data) >= 3 else 0xFF
+            matching_dtcs = [(dtc, status) for dtc, status in dtc_memory.items() if (status & status_mask)]
+            if not matching_dtcs:
+                send_response(bytes([0x7F, 0x19, 0x78]))  # requestCorrectlyReceived-ResponsePending (or 0x10 no DTC)
+                continue
+
+            # Build response: 59 02 [AvailMask] [Format=0x02] + [DTC(3)+Status(1)] for each
+            payload = bytearray([0x59, 0x02, 0xFF, 0x02])  # Availability mask + 3-byte DTC format
+            for dtc, status in matching_dtcs:
+                payload.extend(dtc.to_bytes(3, 'big'))
+                payload.append(status)
+            send_response(payload)
+            print(f"[ECU] → 59 02  Reported {len(matching_dtcs)} DTC(s): {[f'P{dtc:04X}' for dtc,_ in matching_dtcs]}")
