@@ -4,6 +4,7 @@ import time
 
 bus = can.interface.Bus(channel='vcan0', bustype='socketcan', can_filters=[{"can_id": 0x7E0, "can_mask": 0x7FF}])
 
+
 # Flashing simulation
 flash_address = 0
 flash_memory = bytearray()      # Will hold the received firmware
@@ -12,27 +13,6 @@ max_block_length = 4095         # We support up to 4095 bytes per TransferData
 flashing_active = False
 memory = {0xF190: b'VIN12345678901234'}
 
-"""
-A DTC comes in a string of five characters. So, for example, you might run into a code that says P0575. Let’s examine what each of these characters tells us.
-
-The first letter tells us which of the four main parts is at fault.
-P = Powertrain
-B = Body
-C = Chassis
-U = Network
-The second tells us whether we are looking at a generic OBD-II code or a manufacturer’s code. (If a manufacturer feels there isn’t a generic code covering a specific fault, they can add their own.) A zero denotes a generic code. 
-The third character alerts us which vehicle’s system is at fault. Codes include:
-1 = Fuel and Air Metering
-2 = Fuel and Air Metering (injector circuit malfunction specific)
-3 = Ignition System or Misfire
-4 = Auxiliary Emissions Controls
-5 = Vehicle Speed Control and Idle Control System
-6 = Computer Auxiliary Outputs
-7, 8, 9 = Various transmission and Gearbox faults
-A, B, C = Hybrid Propulsion Faults 
-The last two characters tell us the specific fault. These help pinpoint exactly where the problem is located and which part needs attention.
-So in the case of P0575, we know that it’s a generic OBD-II powertrain fault. We also know that the specific fault relates to the vehicle speed control or idle control system. By consulting the list of OBD-II codes, we discover that it’s a problem with the cruise control input circuit. 
-"""
 
 # DTC Memory: 3-byte DTC → status byte
 dtc_memory = {
@@ -58,6 +38,7 @@ extended_data = {
 def send_response(data):
     if len(data) <= 8:
         bus.send(can.Message(arbitration_id=0x7E8, data=data, is_extended_id=False))
+        
         return
     first_frame = bytearray([0x10 | (len(data) >> 8), len(data) & 0xFF]) + data[:6]
     bus.send(can.Message(arbitration_id=0x7E8, data=first_frame, is_extended_id=False))
@@ -68,6 +49,7 @@ def send_response(data):
         chunk = remaining[i:i+7]
         frame = bytearray([seq]) + chunk + b'\x00'*(7-len(chunk))
         bus.send(can.Message(arbitration_id=0x7E8, data=frame[:8], is_extended_id=False))
+        
         seq = 0x20 if seq == 0x2F else seq + 1
         time.sleep(0.01)
 
