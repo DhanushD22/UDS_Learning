@@ -135,4 +135,6 @@ UDS Tester (Manual ISO-TP FF / CF / FC Mode)
    UDS Response: 62F19056494E3132333435363738393031323334
 
 
+> 🔗 For hardware-level CAN bring-up using MCP2515 and ESP32,
+> see: [https://github.com//mcp2515-can-bench]
 
